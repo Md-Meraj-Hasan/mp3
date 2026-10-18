@@ -104,41 +104,9 @@
         <div id="media-stage" class="media-stage hidden">
           <div id="artwork" class="artwork"><span>♫</span></div>
           <div id="video-frame" class="video-frame hidden">
-            <div id="video-overlay-controls" class="video-overlay-controls hidden"><div class="video-overlay-top"><button id="video-overlay-back" type="button" aria-label="Back to library">←</button><span id="video-overlay-title">Now playing</span><button id="video-overlay-lock" type="button" aria-label="Lock controls">⌑</button></div><div class="video-overlay-bottom"><div class="video-overlay-time"><span id="video-current-time">0:00</span><span id="video-total-time">0:00</span></div><input id="video-seekbar" class="video-seekbar" type="range" min="0" max="1000" value="0" aria-label="Seek video"><div class="video-overlay-actions"><button id="video-overlay-rewind" type="button" aria-label="Rewind 10 seconds">↶ 10</button><button id="video-overlay-play" class="overlay-play" type="button" aria-label="Play video">▶</button><button id="video-overlay-forward" type="button" aria-label="Forward 10 seconds">10 ↷</button><button id="video-overlay-fit" type="button" aria-label="Change video fit">⛶ Fit</button><button id="video-overlay-fullscreen" type="button" aria-label="Toggle fullscreen">⛶</button><button id="video-overlay-volume" type="button" aria-label="Show volume">🔊</button></div><div id="video-overlay-volume-panel" class="video-overlay-volume-panel hidden"><input id="video-overlay-volume-slider" type="range" min="0" max="100" value="100" aria-label="Video volume"></div></div></div>
+            <div id="video-overlay-controls" class="video-overlay-controls hidden"><div class="video-overlay-top"><span id="video-overlay-title">Now playing</span><button id="video-overlay-lock" type="button" aria-label="Lock controls">⌑</button></div><div class="video-overlay-bottom"><div class="video-overlay-time"><span id="video-current-time">0:00</span><span id="video-total-time">0:00</span></div><input id="video-seekbar" class="video-seekbar" type="range" min="0" max="1000" value="0" aria-label="Seek video"><div class="video-overlay-actions"><button id="video-overlay-rewind" type="button" aria-label="Rewind 10 seconds">↶ 10</button><button id="video-overlay-play" class="overlay-play" type="button" aria-label="Play video">▶</button><button id="video-overlay-forward" type="button" aria-label="Forward 10 seconds">10 ↷</button><button id="video-overlay-fit" type="button" aria-label="Change video fit">⛶ Fit</button><button id="video-overlay-fullscreen" type="button" aria-label="Toggle fullscreen">⛶</button><button id="video-overlay-volume" type="button" aria-label="Show volume">🔊</button></div><div id="video-overlay-volume-panel" class="video-overlay-volume-panel hidden"><input id="video-overlay-volume-slider" type="range" min="0" max="100" value="100" aria-label="Video volume"></div></div></div>
             <video id="video-element" class="video-element hidden" playsinline preload="metadata"></video>
-            <button id="video-portrait-exit" class="video-portrait-exit hidden" type="button" aria-label="Exit immersive view">✕ Exit</button>
           </div>
-          <section id="video-tools" class="video-tools hidden" aria-label="Video playback tools">
-            <div class="video-tools-heading">
-              <div><p class="eyebrow">PLAYBACK CONTROLS</p><strong>Video tools</strong></div>
-              <span class="video-live-pill">LOCAL · OFFLINE</span>
-            </div>
-            <div class="video-skip-row">
-              <button id="video-back-30" class="video-tool-button" type="button" aria-label="Back 30 seconds"><b>↶ 30</b><span>Back</span></button>
-              <button id="video-play-pause" class="video-main-button" type="button" aria-label="Play video">▶</button>
-              <button id="video-forward-30" class="video-tool-button" type="button" aria-label="Forward 30 seconds"><b>30 ↷</b><span>Forward</span></button>
-            </div>
-            <div class="video-options-row">
-              <label class="video-option" for="video-speed">Speed
-                <select id="video-speed" aria-label="Video playback speed">
-                  <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1.0×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2.0×</option>
-                </select>
-              </label>
-              <button id="video-fit" class="video-option-button" type="button">Fit: Contain</button>
-              <button id="video-fullscreen" class="video-option-button" type="button">⛶ Fullscreen</button>
-              <button id="video-lock" class="video-option-button" type="button">🔒 Lock</button>
-            </div>
-            <div id="video-lock-overlay" class="video-lock-overlay hidden">
-              <span>Playback controls locked</span>
-              <button id="video-unlock" class="video-unlock-button" type="button">🔓 Unlock controls</button>
-            </div>
-            <div class="video-volume-row">
-              <label for="video-volume-boost">Volume boost</label>
-              <input id="video-volume-boost" type="range" min="0" max="200" value="100" step="5" aria-label="Video volume boost">
-              <output id="video-volume-value" for="video-volume-boost">100%</output>
-            </div>
-            <p class="video-help-text">Use seek controls on the video timeline. Lock prevents accidental touches; fullscreen expands the viewing area.</p>
-          </section>
           <div class="track-details">
             <h3 id="current-name">Nothing selected</h3>
             <p id="current-type">LOCAL FILE</p>
