@@ -236,7 +236,7 @@
     $("media-stage").classList.remove("hidden");
     playIndex(0, false);
   }
-  function playIndex(index, autoplay = true, forcedList = null) {
+  async function playIndex(index, autoplay = true, forcedList = null) {
     const list = forcedList || state.files;
     if (!list.length) return;
     if (state.mode === "audio") {
@@ -275,7 +275,27 @@
     const file = list[state.index];
     let videoUrl;
     if (file?.uri) {
-      videoUrl = mediaPlaybackUrl(file.uri);
+      // MediaStore content:// URIs are not reliably playable by the WebView video element.
+      // Copy to app cache only when the user actually requests playback.
+      if (autoplay) {
+        try {
+          const scanner = window.Capacitor?.Plugins?.MediaLibraryScanner;
+          if (!scanner || typeof scanner.preparePlayback !== "function") {
+            throw new Error("Native video playback integration is missing. Rebuild the latest APK.");
+          }
+          $("video-status").textContent = "Preparing video for playback…";
+          $("video-status").classList.remove("hidden");
+          const prepared = await scanner.preparePlayback({ uri: file.uri, name: file.name, size: file.size });
+          videoUrl = window.Capacitor?.convertFileSrc ? window.Capacitor.convertFileSrc(prepared.path) : prepared.path;
+        } catch (error) {
+          console.error("Could not prepare video", error);
+          $("video-status").textContent = error?.message || "Could not open this video.";
+          $("video-status").classList.remove("hidden");
+          return;
+        }
+      } else {
+        videoUrl = "";
+      }
     } else {
       if (!state.objectUrls[state.index] || typeof state.objectUrls[state.index] !== "string") {
         state.objectUrls = list.map(f => URL.createObjectURL(f));
@@ -286,7 +306,8 @@
     document.body.classList.remove("portrait-video-mode");
     $("video-portrait-exit").classList.add("hidden");
     state.videoFit = "contain"; applyVideoFit();
-    audio.removeAttribute("src"); video.src = videoUrl; video.load();
+    audio.removeAttribute("src");
+    if (videoUrl) { video.src = videoUrl; video.load(); } else { video.removeAttribute("src"); video.load(); }
     ensureGainGraph("video"); if (state.videoGainNode) state.videoGainNode.gain.value = state.videoBoost;
     $("current-name").textContent = file.name;
     $("current-type").textContent = `VIDEO FILE · ${formatBytes(file.size)}`;
@@ -480,7 +501,11 @@
   $("video-back-30").addEventListener("click", () => seekVideoBy(-30));
   $("video-forward-30").addEventListener("click", () => seekVideoBy(30));
   $("video-play-pause").addEventListener("click", () => {
-    if (video.paused) video.play().catch(() => {}); else video.pause();
+    if (video.paused) {
+      const file = state.files[state.index];
+      if (file?.uri && !video.currentSrc) playIndex(state.index, true);
+      else video.play().catch(error => { $("video-status").textContent = error?.message || "Could not start video."; $("video-status").classList.remove("hidden"); });
+    } else video.pause();
   });
   video.addEventListener("error", () => {
     const code = video.error?.code;

@@ -4,6 +4,8 @@ import android.content.ContentUris
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import java.io.File
+import java.io.FileOutputStream
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -68,4 +70,32 @@ class MediaLibraryScannerPlugin : Plugin() {
             call.reject("Could not scan device media: ${e.message}", e)
         }
     }
+    /** Copies a MediaStore content URI into app cache so Android WebView can play it reliably. */
+    @PluginMethod
+    fun preparePlayback(call: PluginCall) {
+        val rawUri = call.getString("uri")
+        if (rawUri.isNullOrBlank()) {
+            call.reject("Missing media URI")
+            return
+        }
+        try {
+            val uri = Uri.parse(rawUri)
+            val name = call.getString("name", "video.mp4") ?: "video.mp4"
+            val safeName = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_")
+            val cacheDir = File(context.cacheDir, "meraj_media_playback")
+            if (!cacheDir.exists()) cacheDir.mkdirs()
+            val target = File(cacheDir, safeName)
+            val expectedSize = call.getLong("size") ?: 0L
+            if (!target.exists() || (expectedSize > 0 && target.length() != expectedSize)) {
+                context.contentResolver.openInputStream(uri).use { input ->
+                    if (input == null) throw IllegalStateException("Cannot open selected video")
+                    FileOutputStream(target).use { output -> input.copyTo(output) }
+                }
+            }
+            call.resolve(JSObject().put("path", target.absolutePath).put("size", target.length()))
+        } catch (e: Exception) {
+            call.reject("Could not prepare video for playback: ${e.message}", e)
+        }
+    }
+
 }
