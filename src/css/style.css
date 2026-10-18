@@ -110,3 +110,55 @@ body.portrait-video-mode .video-lock-overlay{position:fixed;inset:0;z-index:120}
 #player-screen.library-scroll-mode{height:calc(100dvh - 120px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 #media-stage{scroll-margin-top:10px}
 #video-status{font-variant-numeric:tabular-nums}
+
+/* Organized premium video control layout, matched to the compact music-player controls. */
+.video-tools{position:relative;overflow:hidden;display:grid;gap:12px;margin-top:12px;padding:15px;border:1px solid rgba(139,92,246,.25);border-radius:18px;background:linear-gradient(145deg,rgba(25,24,43,.98),rgba(13,16,28,.98));box-shadow:0 12px 32px rgba(0,0,0,.18)}
+.video-tools-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.video-tools-heading .eyebrow{margin:0 0 4px;font-size:9px}.video-tools-heading strong{font-size:14px;letter-spacing:.2px}.video-live-pill{padding:6px 9px;border:1px solid rgba(74,222,128,.2);border-radius:99px;color:#86efac;font-size:8px;font-weight:850;letter-spacing:1px;white-space:nowrap}
+.video-skip-row{display:grid;grid-template-columns:1fr 64px 1fr;align-items:center;gap:12px;padding:3px 0 2px}.video-tool-button{width:100%;min-height:52px;gap:3px;border-radius:14px;background:rgba(255,255,255,.035);border-color:rgba(167,139,250,.2)}.video-tool-button b{font-size:17px}.video-tool-button span{font-size:10px;color:#a9a5c4}.video-main-button{width:58px;height:58px;justify-self:center;font-size:20px}.video-options-row{justify-content:space-between;gap:8px}.video-option{flex:1;justify-content:space-between;min-width:105px}.video-option select,.video-option-button{min-height:38px;border-radius:11px}.video-option-button{flex:1}.video-volume-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding-top:11px;border-top:1px solid rgba(255,255,255,.07);font-size:10px;color:#b6b2ce;font-weight:750}.video-volume-row input{width:100%;accent-color:#8b5cf6}.video-volume-row output{min-width:38px;text-align:right;color:#e9e5ff;font-variant-numeric:tabular-nums}.video-lock-overlay{border-radius:14px}.video-portrait-exit{position:absolute;top:12px;right:12px;z-index:8;border:1px solid #ffffff35;border-radius:99px;background:#09090fcc;color:#fff;padding:9px 13px;font-size:11px;font-weight:800}.video-frame.hidden,.video-tools.hidden{display:none!important}
+@media(max-width:420px){.video-tools{padding:12px;gap:10px}.video-options-row{display:grid;grid-template-columns:1fr 1fr}.video-option{min-width:0}.video-skip-row{gap:8px}.video-volume-row{gap:7px}}
+
+/* Fixed player page: only the playlist list itself may scroll. */
+html, body { width:100%; height:100%; min-height:0; overflow:hidden; }
+body { height:100dvh; min-height:0; }
+.app-shell { height:100dvh; min-height:0; overflow:hidden; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+.topbar { flex:0 0 64px; height:64px; min-height:64px; }
+.app-shell > main { flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+.screen { min-height:0; }
+#player-screen.player-screen:not(.hidden) { flex:1 1 auto; min-height:0; height:100%; overflow:hidden; display:flex; flex-direction:column; gap:8px; padding:8px 0 6px; }
+#player-screen > .back-button { flex:0 0 auto; align-self:flex-start; padding:3px 0; }
+#player-screen > .section-heading { flex:0 0 auto; margin:3px 0 4px; }
+#player-screen > .section-heading h2 { font-size:clamp(20px,5vw,26px); margin:0 0 3px; }
+#player-screen > .section-heading > p:last-child { font-size:10px; }
+#player-screen > #library-scan-panel { flex:0 0 auto; margin:0; padding:8px 10px; min-height:52px; }
+#player-screen > #audio-library-tools { flex:0 0 auto; margin:0; padding:8px; }
+#player-screen > #empty-library { flex:0 0 auto; margin:0; padding:12px; }
+#player-screen > #media-stage { flex:0 0 auto; min-height:0; max-height:48dvh; overflow:hidden; margin:0; padding:9px; display:flex; flex-direction:column; gap:7px; }
+#player-screen > #media-stage.hidden { display:none !important; }
+#media-stage .video-frame { flex:0 1 auto; min-height:0; max-height:26dvh; overflow:hidden; }
+#media-stage .video-element { width:100%; height:auto; max-height:26dvh; min-height:100px; object-fit:contain; }
+#media-stage .video-tools { flex:0 0 auto; gap:7px; margin:0; padding:8px; }
+#media-stage .video-tools-heading strong { font-size:12px; }
+#media-stage .video-skip-row { grid-template-columns:1fr 48px 1fr; gap:8px; padding:0; }
+#media-stage .video-tool-button { min-height:38px; padding:4px; }
+#media-stage .video-main-button { width:44px; height:44px; }
+#media-stage .video-options-row { padding-top:6px; gap:5px; }
+#media-stage .video-option select, #media-stage .video-option-button { min-height:30px; padding:6px; }
+#media-stage .video-volume-row { padding-top:5px; }
+#media-stage .video-help-text { display:none; }
+#media-stage .track-details { margin:4px 0; }
+#media-stage #audio-controls { margin-top:4px; }
+#player-screen > .playlist-section { flex:1 1 0; min-height:90px; overflow:hidden; display:flex; flex-direction:column; margin:0; padding:9px 0 0; border-top:1px solid rgba(255,255,255,.07); }
+#player-screen .playlist-header { flex:0 0 auto; min-height:32px; }
+#player-screen .playlist-header h3 { font-size:16px; }
+#player-screen #playlist { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; align-content:start; padding:0 2px calc(8px + env(safe-area-inset-bottom)); }
+#player-screen #playlist .playlist-item { flex:0 0 auto; }
+#player-screen > .local-footnote { display:none; }
+.app-shell:has(#player-screen:not(.hidden)) > .app-footer { display:none; }
+@media(max-height:700px) {
+  .topbar { flex-basis:54px; height:54px; min-height:54px; }
+  .round-brand { width:70px; height:70px; flex-basis:70px; transform:none; }
+  #player-screen.player-screen:not(.hidden) { gap:5px; padding-top:5px; }
+  #player-screen > #media-stage { max-height:43dvh; padding:6px; }
+  #media-stage .video-frame, #media-stage .video-element { max-height:22dvh; }
+  #media-stage .video-tools { gap:5px; padding:6px; }
+}
