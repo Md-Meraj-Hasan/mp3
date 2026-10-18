@@ -93,6 +93,11 @@ if (!main.includes('MediaPermissionPlugin::class.java') && !main.includes('Media
 if (!main.includes('MediaLibraryScannerPlugin::class.java') && !main.includes('MediaLibraryScannerPlugin.class')) {
   throw new Error(`Could not register native media plugins in ${mainActivity}`);
 }
+// WebView must allow playback after the async native MediaStore preparation step.
+if (mainActivity.endsWith('.kt') && !main.includes('mediaPlaybackRequiresUserGesture = false')) {
+  main = main.replace(/super\.onCreate\(savedInstanceState\)/, 'super.onCreate(savedInstanceState)\n        bridge.webView.settings.mediaPlaybackRequiresUserGesture = false');
+}
+
 fs.writeFileSync(mainActivity, main);
 
 let xml = fs.readFileSync(manifest, 'utf8');

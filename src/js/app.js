@@ -315,7 +315,17 @@
     $("artwork").classList.add("hidden"); $("audio-controls").classList.add("hidden");
     video.classList.remove("hidden"); $("video-status").classList.remove("hidden");
     renderPlaylist();
-    if (autoplay) video.play().catch(() => {});
+    if (autoplay) {
+      try {
+        await video.play();
+        $("video-status").textContent = "Video playing";
+        $("video-status").classList.remove("hidden");
+      } catch (error) {
+        console.error("Video play() was rejected", error, video.currentSrc);
+        $("video-status").textContent = error?.message || "Video is ready but could not start. Tap Play again.";
+        $("video-status").classList.remove("hidden");
+      }
+    }
   }
   function seekVideoBy(seconds) {
     if (!Number.isFinite(video.duration) || video.duration <= 0) return;
@@ -504,7 +514,14 @@
     if (video.paused) {
       const file = state.files[state.index];
       if (file?.uri && !video.currentSrc) playIndex(state.index, true);
-      else video.play().catch(error => { $("video-status").textContent = error?.message || "Could not start video."; $("video-status").classList.remove("hidden"); });
+      else video.play().then(() => {
+        $("video-status").textContent = "Video playing";
+        $("video-status").classList.remove("hidden");
+      }).catch(error => {
+        console.error("Video play button failed", error, video.currentSrc);
+        $("video-status").textContent = error?.message || "Could not start video. Try another file or check its format.";
+        $("video-status").classList.remove("hidden");
+      });
     } else video.pause();
   });
   video.addEventListener("error", () => {
