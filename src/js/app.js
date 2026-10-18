@@ -307,7 +307,16 @@
     $("video-portrait-exit").classList.add("hidden");
     state.videoFit = "contain"; applyVideoFit();
     audio.removeAttribute("src");
-    if (videoUrl) { video.src = videoUrl; video.load(); } else { video.removeAttribute("src"); video.load(); }
+    if (videoUrl) {
+      $("video-frame").classList.remove("hidden");
+      video.classList.remove("hidden");
+      video.style.display = "block";
+      video.src = videoUrl;
+      video.load();
+    } else {
+      video.removeAttribute("src");
+      video.load();
+    }
     ensureGainGraph("video"); if (state.videoGainNode) state.videoGainNode.gain.value = state.videoBoost;
     $("current-name").textContent = file.name;
     $("current-type").textContent = `VIDEO FILE · ${formatBytes(file.size)}`;
@@ -546,16 +555,34 @@
   $("video-fullscreen").addEventListener("click", toggleVideoFullscreen);
   // Detect vertical/Shorts-style videos and switch to an immersive portrait layout.
   video.addEventListener("loadedmetadata", () => {
+    // Keep the video viewport visible and sized even when Android WebView reports
+    // metadata before its first decoded frame. A collapsed/zero-height video can
+    // otherwise play audio while the picture appears missing.
+    const frame = $("video-frame");
+    frame.classList.remove("hidden");
+    video.classList.remove("hidden");
+    video.style.display = "block";
+    video.style.width = "100%";
+    video.style.height = "100%";
     const isPortrait = video.videoHeight > video.videoWidth;
     document.body.classList.toggle("portrait-video-mode", isPortrait);
     $("video-portrait-exit").classList.toggle("hidden", !isPortrait);
-    if (isPortrait) {
-      state.videoFit = "cover";
-      applyVideoFit();
-    } else {
-      state.videoFit = "contain";
-      applyVideoFit();
+    state.videoFit = isPortrait ? "cover" : "contain";
+    applyVideoFit();
+    const status = $("video-status");
+    if (status) status.textContent = `Video loaded · ${video.videoWidth}×${video.videoHeight} · ${formatTime(video.duration)}`;
+  });
+  video.addEventListener("loadeddata", () => {
+    // Confirm a decoded video frame, not just an audio track, is available.
+    const frame = $("video-frame");
+    frame.classList.remove("hidden");
+    video.classList.remove("hidden");
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      $("video-status").textContent = `Video picture ready · ${video.videoWidth}×${video.videoHeight}`;
     }
+  });
+  video.addEventListener("waiting", () => {
+    if (video.readyState < 3) $("video-status").textContent = "Loading video frames…";
   });
   $("video-portrait-exit").addEventListener("click", () => {
     document.body.classList.remove("portrait-video-mode");

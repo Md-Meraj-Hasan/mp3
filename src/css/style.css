@@ -162,3 +162,33 @@ body { height:100dvh; min-height:0; }
   #media-stage .video-frame, #media-stage .video-element { max-height:22dvh; }
   #media-stage .video-tools { gap:5px; padding:6px; }
 }
+
+
+/* Playback visibility fix: reserve a real video viewport so audio-only rendering
+   cannot happen because the WebView video element collapsed to zero height. */
+#media-stage .video-frame {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: min(26dvh, 56vw);
+  min-height: 160px;
+  max-height: 30dvh;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  overflow: hidden;
+}
+#media-stage .video-element {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+}
+#media-stage .video-frame.hidden,
+#media-stage .video-element.hidden { display: none !important; }
+@media (max-height: 700px) {
+  #media-stage .video-frame { height: min(22dvh, 56vw); min-height: 125px; max-height: 24dvh; }
+}
