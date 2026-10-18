@@ -440,7 +440,7 @@
           playIndex(queue.findIndex(f => fileKey(f) === fileKey(file)), true, queue);
         } else playIndex(i, true);
       });
-      const info = document.createElement("div"); info.className = "playlist-info";
+      const info = document.createElement("div"); info.className = state.mode === "video" ? "playlist-info video-card-info" : "playlist-info";
       info.addEventListener("click", () => {
         if (state.mode === "audio") {
           const queue = currentAudioList();
