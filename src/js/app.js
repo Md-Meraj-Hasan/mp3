@@ -7,7 +7,7 @@
   const state = {
     mode: "video", files: [], index: 0, objectUrls: [], allAudioFiles: [],
     favorites: loadFavorites(), favoritesOnly: false, shuffle: false,
-    repeat: "off", speed: 1, lastPlayed: null, videoLocked: false, videoFit: "contain", lastVideoTap: 0,
+    repeat: "off", speed: 1, lastPlayed: null, videoLocked: false, videoFit: "contain", lastVideoTap: 0, videoLibraryView: "videos", videoSearch: "",
     audioBoost: 1, videoBoost: 1, audioGainContext: null, videoGainContext: null,
     audioGainNode: null, videoGainNode: null, audioSourceNode: null, videoSourceNode: null
   };
@@ -39,12 +39,12 @@
     const multiplier = value / 100;
     if (kind === "audio") {
       state.audioBoost = multiplier;
-      $("audio-volume-value").textContent = `${value}%`;
+      if ($("audio-volume-value")) $("audio-volume-value").textContent = `${value}%`;
       if (ensureGainGraph("audio")) state.audioGainNode.gain.value = multiplier;
       else audio.volume = Math.min(1, multiplier);
     } else {
       state.videoBoost = multiplier;
-      $("video-volume-value").textContent = `${value}%`;
+      if ($("video-volume-value")) $("video-volume-value").textContent = `${value}%`;
       if (ensureGainGraph("video")) state.videoGainNode.gain.value = multiplier;
       else video.volume = Math.min(1, multiplier);
     }
@@ -152,7 +152,8 @@
         $("empty-library").classList.add("hidden");
         $("media-stage").classList.add("hidden");
         updateScanMessage(`Scan complete · ${normalized.length} ${state.mode === "audio" ? "audio files" : "videos"} found`);
-        playIndex(0, false);
+        if (state.mode === "audio") playIndex(0, false);
+        else { $("media-stage").classList.add("hidden"); $("empty-library").classList.add("hidden"); }
       } else {
         $("media-stage").classList.add("hidden");
         $("empty-library").classList.remove("hidden");
@@ -405,7 +406,20 @@
   }
   function renderPlaylist() {
     const list = $("playlist");
-    const shown = state.mode === "audio" ? currentAudioList() : state.files;
+    let shown = state.mode === "audio" ? currentAudioList() : state.files;
+    if (state.mode === "video") {
+      const q = state.videoSearch.trim().toLocaleLowerCase();
+      if (q) shown = shown.filter(file => `${file.name || ""} ${getFolder(file)}`.toLocaleLowerCase().includes(q));
+      if (state.videoLibraryView === "folders") {
+        const folderNames = [...new Set(shown.map(getFolder))].sort((a,b) => a.localeCompare(b));
+        list.classList.add("folder-card-list");
+        $("track-count").textContent = String(folderNames.length);
+        list.replaceChildren();
+        if (!folderNames.length) { const empty = document.createElement("div"); empty.className = "playlist-empty"; empty.textContent = "No folders found."; list.appendChild(empty); return; }
+        folderNames.forEach(folder => { const filesInFolder = state.files.filter(file => getFolder(file) === folder); const card = document.createElement("button"); card.type = "button"; card.className = "folder-card"; card.innerHTML = '<span class="folder-card-icon">▤</span><span class="folder-card-copy"></span><span class="folder-card-arrow">›</span>'; card.querySelector(".folder-card-copy").textContent = folder; const count = document.createElement("small"); count.textContent = `${filesInFolder.length} videos`; card.querySelector(".folder-card-copy").appendChild(count); card.addEventListener("click", () => { state.videoSearch = folder; $("video-search").value = folder; state.videoLibraryView = "videos"; updateVideoLibraryTabs(); renderPlaylist(); }); list.appendChild(card); }); return;
+      }
+    }
+    list.classList.toggle("folder-card-list", false);
     $("track-count").textContent = String(shown.length);
     list.replaceChildren();
     if (!shown.length) {
@@ -416,7 +430,8 @@
     shown.forEach((file, i) => {
       const item = document.createElement("div");
       const active = state.mode === "audio" ? state.files[state.index] && fileKey(state.files[state.index]) === fileKey(file) : i === state.index;
-      item.className = `playlist-item${active ? " active" : ""}`;
+      item.className = `playlist-item${active ? " active" : ""}${state.mode === "video" ? " video-library-card" : ""}`;
+      if (state.mode === "video") { const thumb = document.createElement("div"); thumb.className = "video-card-thumb"; thumb.innerHTML = '<span class="thumb-film-icon">▶</span><span class="thumb-duration">VIDEO</span>'; thumb.setAttribute("aria-hidden", "true"); item.appendChild(thumb); }
       const button = document.createElement("button"); button.className = "playlist-play"; button.type = "button";
       button.textContent = active && !activeMedia().paused ? "Ⅱ" : "▶";
       button.setAttribute("aria-label", `Play ${file.name}`);
@@ -434,12 +449,13 @@
         if (state.mode === "audio") {
           const queue = currentAudioList();
           playIndex(queue.findIndex(f => fileKey(f) === fileKey(file)), true, queue);
-        } else playIndex(i, true);
+        } else playIndex(state.files.findIndex(f => fileKey(f) === fileKey(file)), true);
       });
       const name = document.createElement("div"); name.className = "playlist-name"; name.textContent = file.name;
       const meta = document.createElement("div"); meta.className = "playlist-meta"; meta.textContent = `${getFolder(file)} · ${formatBytes(file.size)}`;
       info.append(name, meta);
-      item.append(button, info);
+      if (state.mode === "video") { const playBadge = document.createElement("span"); playBadge.className = "video-card-play"; playBadge.textContent = "▶"; item.appendChild(playBadge); item.addEventListener("click", e => { if (e.target !== button) playIndex(state.files.findIndex(f => fileKey(f) === fileKey(file)), true); }); }
+      if (state.mode === "video") { item.append(info); info.classList.add("video-card-info"); } else item.append(button, info);
       if (state.mode === "audio") {
         const fav = document.createElement("button"); fav.className = `favorite-toggle${isFavorite(file) ? " is-favorite" : ""}`;
         fav.type = "button"; fav.textContent = isFavorite(file) ? "♥" : "♡"; fav.title = isFavorite(file) ? "Remove favorite" : "Add favorite";
@@ -470,8 +486,21 @@
     $("repeat-mode").setAttribute("aria-label", $("repeat-mode").title);
   }
 
+  function updateVideoLibraryTabs() {
+    const folders = state.videoLibraryView === "folders";
+    $("video-tab-all").classList.toggle("selected", !folders); $("video-tab-folders").classList.toggle("selected", folders);
+    $("video-tab-all").setAttribute("aria-selected", String(!folders)); $("video-tab-folders").setAttribute("aria-selected", String(folders));
+    $("bottom-library").classList.toggle("active", !folders); $("bottom-folders").classList.toggle("active", folders);
+  }
+  $("video-search").addEventListener("input", e => { state.videoSearch = e.target.value || ""; renderPlaylist(); });
+  $("video-tab-all").addEventListener("click", () => { state.videoLibraryView = "videos"; updateVideoLibraryTabs(); renderPlaylist(); });
+  $("video-tab-folders").addEventListener("click", () => { state.videoLibraryView = "folders"; updateVideoLibraryTabs(); renderPlaylist(); });
+  $("bottom-library").addEventListener("click", () => { state.videoLibraryView = "videos"; updateVideoLibraryTabs(); renderPlaylist(); });
+  $("bottom-folders").addEventListener("click", () => { state.videoLibraryView = "folders"; updateVideoLibraryTabs(); renderPlaylist(); });
+  $("bottom-rescan").addEventListener("click", scanDeviceLibrary);
+  $("rescan-library-top").addEventListener("click", scanDeviceLibrary);
   $("choose-video").addEventListener("click", () => { openMode("video"); scanDeviceLibrary(); });
-  $("back-home").addEventListener("click", () => {
+  $("back-home")?.addEventListener("click", () => {
     video.pause(); playerScreen.classList.add("hidden"); welcome.classList.remove("hidden");
   });
   $("rescan-library").addEventListener("click", scanDeviceLibrary);
@@ -515,9 +544,21 @@
   });
   $("previous-track").addEventListener("click", previousTrack);
   $("next-track").addEventListener("click", nextTrack);
-  $("audio-volume-boost").addEventListener("input", e => setVolumeBoost("audio", e.target.value));
+  // Audio boost controls are optional in the video-first library UI. Guard them so
+  // a missing audio-only control cannot abort all player initialization.
+  $("audio-volume-boost")?.addEventListener("input", e => setVolumeBoost("audio", e.target.value));
   $("video-volume-boost").addEventListener("input", e => setVolumeBoost("video", e.target.value));
   $("video-back-30").addEventListener("click", () => seekVideoBy(-30));
+  $("video-overlay-back").addEventListener("click", () => { video.pause(); $("media-stage").classList.add("hidden"); $("video-overlay-controls").classList.add("hidden"); });
+  $("video-overlay-lock").addEventListener("click", () => setVideoLock(true));
+  $("video-overlay-rewind").addEventListener("click", () => seekVideoBy(-10));
+  $("video-overlay-forward").addEventListener("click", () => seekVideoBy(10));
+  $("video-overlay-play").addEventListener("click", () => { if (video.paused) video.play().catch(() => {}); else video.pause(); });
+  $("video-overlay-fit").addEventListener("click", () => { state.videoFit = state.videoFit === "contain" ? "cover" : state.videoFit === "cover" ? "fill" : "contain"; applyVideoFit(); $("video-overlay-fit").textContent = state.videoFit === "contain" ? "⛶ Fit" : state.videoFit === "cover" ? "⛶ Fill" : "⛶ Stretch"; });
+  $("video-overlay-fullscreen").addEventListener("click", toggleVideoFullscreen);
+  $("video-overlay-volume").addEventListener("click", () => $("video-overlay-volume-panel").classList.toggle("hidden"));
+  $("video-overlay-volume-slider").addEventListener("input", e => { video.volume = Math.max(0, Math.min(1, Number(e.target.value) / 100)); $("video-overlay-volume").textContent = video.volume === 0 ? "🔇" : "🔊"; });
+  $("video-seekbar").addEventListener("input", () => { if (Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Number($("video-seekbar").value) / 1000 * video.duration; });
   $("video-forward-30").addEventListener("click", () => seekVideoBy(30));
   $("video-play-pause").addEventListener("click", () => {
     if (video.paused) {
@@ -543,8 +584,8 @@
   video.addEventListener("loadedmetadata", () => {
     $("video-status").textContent = `Playing video · ${formatTime(video.duration)}`;
   });
-  video.addEventListener("play", () => { $("video-play-pause").textContent = "Ⅱ"; $("video-play-pause").setAttribute("aria-label", "Pause video"); });
-  video.addEventListener("pause", () => { $("video-play-pause").textContent = "▶"; $("video-play-pause").setAttribute("aria-label", "Play video"); });
+  video.addEventListener("play", () => { $("video-play-pause").textContent = "Ⅱ"; $("video-play-pause").setAttribute("aria-label", "Pause video"); $("video-overlay-play").textContent = "Ⅱ"; $("video-overlay-play").setAttribute("aria-label", "Pause video"); });
+  video.addEventListener("pause", () => { $("video-play-pause").textContent = "▶"; $("video-play-pause").setAttribute("aria-label", "Play video"); $("video-overlay-play").textContent = "▶"; $("video-overlay-play").setAttribute("aria-label", "Play video"); });
   $("video-speed").addEventListener("change", e => { video.playbackRate = Math.max(0.5, Math.min(2, Number(e.target.value) || 1)); });
   $("video-fit").addEventListener("click", () => {
     state.videoFit = state.videoFit === "contain" ? "cover" : state.videoFit === "cover" ? "fill" : "contain";
@@ -570,6 +611,9 @@
     state.videoFit = isPortrait ? "cover" : "contain";
     applyVideoFit();
     const status = $("video-status");
+    $("video-overlay-title").textContent = state.files[state.index]?.name || "Now playing";
+    $("video-overlay-controls").classList.remove("hidden");
+    $("video-total-time").textContent = formatTime(video.duration);
     if (status) status.textContent = `Video loaded · ${video.videoWidth}×${video.videoHeight} · ${formatTime(video.duration)}`;
   });
   video.addEventListener("loadeddata", () => {
@@ -638,6 +682,9 @@
     if (status) status.textContent = `Video ready · 0:00 / ${d}`;
   });
   video.addEventListener("timeupdate", () => {
+    $("video-current-time").textContent = formatTime(video.currentTime);
+    $("video-total-time").textContent = formatTime(video.duration);
+    $("video-seekbar").value = Number.isFinite(video.duration) && video.duration > 0 ? String(Math.round(video.currentTime / video.duration * 1000)) : "0";
     const status = $("video-status");
     if (status && Number.isFinite(video.duration) && video.duration > 0) {
       status.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)} · Use video controls to seek`;
@@ -659,5 +706,6 @@
   renderPlaylist();
   // Video-only app: open the local video library and request permission on startup.
   openMode("video");
+  updateVideoLibraryTabs();
   scanDeviceLibrary();
 })();

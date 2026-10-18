@@ -41,7 +41,7 @@
     </header>
 
     <main>
-      <section id="welcome-screen" class="screen welcome-screen">
+      <section id="welcome-screen" class="screen welcome-screen hidden">
         <div class="hero-orb orb-one"></div>
         <div class="hero-orb orb-two"></div>
         <div class="welcome-content">
@@ -62,13 +62,9 @@
         </div>
       </section>
 
-      <section id="player-screen" class="screen player-screen hidden">
-        <button id="back-home" class="back-button" type="button"><span aria-hidden="true">←</span> Home</button>
-        <div class="section-heading">
-          <p class="eyebrow" id="player-kicker">YOUR LIBRARY</p>
-          <h2 id="player-title">Music Player</h2>
-          <p id="player-subtitle">Choose files stored on your device.</p>
-        </div>
+      <section id="player-screen" class="screen player-screen">
+        <div class="library-topline"><div class="library-title-wrap"><p class="eyebrow" id="player-kicker">YOUR LIBRARY</p><h2 id="player-title">Video Library</h2><p id="player-subtitle">Your videos, stored on this device.</p></div><button id="rescan-library-top" class="icon-action" type="button" aria-label="Rescan videos" title="Rescan">⟳</button></div>
+        <div class="video-library-toolbar" id="video-library-toolbar"><label class="library-search"><span aria-hidden="true">⌕</span><input id="video-search" type="search" placeholder="Search videos…" autocomplete="off" aria-label="Search videos"></label><div class="library-tabs" role="tablist" aria-label="Video library view"><button id="video-tab-all" class="library-tab selected" type="button" role="tab" aria-selected="true">▣ Videos</button><button id="video-tab-folders" class="library-tab" type="button" role="tab" aria-selected="false">▤ Folders</button></div></div>
         <div id="library-scan-panel" class="library-scan-panel" role="status" aria-live="polite">
           <span class="scan-pulse" aria-hidden="true"></span>
           <div class="scan-copy">
@@ -108,7 +104,8 @@
         <div id="media-stage" class="media-stage hidden">
           <div id="artwork" class="artwork"><span>♫</span></div>
           <div id="video-frame" class="video-frame hidden">
-            <video id="video-element" class="video-element hidden" playsinline controls preload="metadata"></video>
+            <div id="video-overlay-controls" class="video-overlay-controls hidden"><div class="video-overlay-top"><button id="video-overlay-back" type="button" aria-label="Back to library">←</button><span id="video-overlay-title">Now playing</span><button id="video-overlay-lock" type="button" aria-label="Lock controls">⌑</button></div><div class="video-overlay-bottom"><div class="video-overlay-time"><span id="video-current-time">0:00</span><span id="video-total-time">0:00</span></div><input id="video-seekbar" class="video-seekbar" type="range" min="0" max="1000" value="0" aria-label="Seek video"><div class="video-overlay-actions"><button id="video-overlay-rewind" type="button" aria-label="Rewind 10 seconds">↶ 10</button><button id="video-overlay-play" class="overlay-play" type="button" aria-label="Play video">▶</button><button id="video-overlay-forward" type="button" aria-label="Forward 10 seconds">10 ↷</button><button id="video-overlay-fit" type="button" aria-label="Change video fit">⛶ Fit</button><button id="video-overlay-fullscreen" type="button" aria-label="Toggle fullscreen">⛶</button><button id="video-overlay-volume" type="button" aria-label="Show volume">🔊</button></div><div id="video-overlay-volume-panel" class="video-overlay-volume-panel hidden"><input id="video-overlay-volume-slider" type="range" min="0" max="100" value="100" aria-label="Video volume"></div></div></div>
+            <video id="video-element" class="video-element hidden" playsinline preload="metadata"></video>
             <button id="video-portrait-exit" class="video-portrait-exit hidden" type="button" aria-label="Exit immersive view">✕ Exit</button>
           </div>
           <section id="video-tools" class="video-tools hidden" aria-label="Video playback tools">
@@ -176,7 +173,7 @@
           <div class="playlist-header"><div><p class="eyebrow">ON THIS SESSION</p><h3>Playlist <span id="track-count">0</span></h3></div><button id="clear-list" class="text-button" type="button">Clear</button></div>
           <div id="playlist" class="playlist"><div class="playlist-empty">Files you select will appear here.</div></div>
         </section>
-        <p class="local-footnote">Files are opened from your device. This app does not upload or share them.</p>
+        <nav class="bottom-navigation" aria-label="Main navigation"><button class="bottom-nav-item active" type="button" id="bottom-library"><span>▦</span><small>Library</small></button><button class="bottom-nav-item" type="button" id="bottom-folders"><span>▤</span><small>Folders</small></button><button class="bottom-nav-item" type="button" id="bottom-rescan"><span>⟳</span><small>Rescan</small></button></nav><p class="local-footnote">Files are opened from your device. This app does not upload or share them.</p>
       </section>
     </main>
     <footer class="app-footer"><span>MER AJ MEDIA PLAYER</span><span>BUILT FOR OFFLINE</span></footer>
