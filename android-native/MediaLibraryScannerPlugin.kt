@@ -3,9 +3,11 @@ package com.meraj.mediaplayer
 import android.content.ContentUris
 import android.net.Uri
 import android.os.Build
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
+import android.util.Base64
+import java.io.ByteArrayOutputStream
 import android.provider.MediaStore
-import java.io.File
-import java.io.FileOutputStream
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -16,6 +18,31 @@ import com.getcapacitor.annotation.CapacitorPlugin
 /** Queries Android MediaStore for shared audio/video files after runtime permission is granted. */
 @CapacitorPlugin(name = "MediaLibraryScanner")
 class MediaLibraryScannerPlugin : Plugin() {
+    /** Opens Android's native chooser with the selected local audio/video content URI. */
+    @PluginMethod
+    fun shareMedia(call: PluginCall) {
+        val rawUri = call.getString("uri")
+        if (rawUri.isNullOrBlank()) { call.reject("Missing media URI"); return }
+        try {
+            val uri = Uri.parse(rawUri)
+            val mimeType = call.getString("mimeType")?.takeIf { it.contains("/") } ?: "*/*"
+            val name = call.getString("name", "Media file") ?: "Media file"
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                putExtra(android.content.Intent.EXTRA_TITLE, name)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                clipData = android.content.ClipData.newUri(context.contentResolver, name, uri)
+            }
+            val chooser = android.content.Intent.createChooser(intent, "Share media file")
+            chooser.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            activity.runOnUiThread { activity.startActivity(chooser) }
+            call.resolve(JSObject().put("opened", true))
+        } catch (e: Exception) {
+            call.reject("Could not open Android share menu: ${e.message}", e)
+        }
+    }
+
     @PluginMethod
     fun scan(call: PluginCall) {
         val type = call.getString("type", "audio") ?: "audio"
@@ -36,7 +63,8 @@ class MediaLibraryScannerPlugin : Plugin() {
         ) else mutableListOf(
             MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME,
             MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.MIME_TYPE,
-            MediaStore.Audio.Media.DURATION
+            MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ALBUM
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) projection.add(MediaStore.MediaColumns.RELATIVE_PATH)
         val sort = if (type == "video") "${MediaStore.Video.Media.DISPLAY_NAME} COLLATE NOCASE ASC"
@@ -59,6 +87,10 @@ class MediaLibraryScannerPlugin : Plugin() {
                     item.put("size", cursor.getLong(sizeCol))
                     item.put("type", cursor.getString(mimeCol) ?: "")
                     item.put("duration", if (durationCol >= 0) cursor.getLong(durationCol) else 0L)
+                    val artistCol = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
+                    val albumCol = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM)
+                    item.put("artist", if (artistCol >= 0) cursor.getString(artistCol) ?: "Unknown artist" else "Unknown artist")
+                    item.put("album", if (albumCol >= 0) cursor.getString(albumCol) ?: "Unknown album" else "Unknown album")
                     item.put("relativePath", if (pathCol >= 0) cursor.getString(pathCol) ?: "Device files" else "Device files")
                     items.put(item)
                 }
@@ -70,31 +102,51 @@ class MediaLibraryScannerPlugin : Plugin() {
             call.reject("Could not scan device media: ${e.message}", e)
         }
     }
-    /** Copies a MediaStore content URI into app cache so Android WebView can play it reliably. */
+    /** Returns a small cached video-frame thumbnail as a data URL for library cards. */
     @PluginMethod
-    fun preparePlayback(call: PluginCall) {
+    fun getThumbnail(call: PluginCall) {
         val rawUri = call.getString("uri")
-        if (rawUri.isNullOrBlank()) {
-            call.reject("Missing media URI")
-            return
+        if (rawUri.isNullOrBlank()) { call.reject("Missing media URI"); return }
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, Uri.parse(rawUri))
+            val frame = retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            if (frame == null) { call.resolve(JSObject().put("thumbnail", "")); return }
+            val width = 320
+            val scale = minOf(1.0, width.toDouble() / frame.width.toDouble())
+            val thumb = if (scale < 1.0) Bitmap.createScaledBitmap(frame, (frame.width * scale).toInt().coerceAtLeast(1), (frame.height * scale).toInt().coerceAtLeast(1), true) else frame
+            val bytes = ByteArrayOutputStream()
+            thumb.compress(Bitmap.CompressFormat.JPEG, 78, bytes)
+            val encoded = Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
+            if (thumb !== frame) thumb.recycle()
+            frame.recycle()
+            call.resolve(JSObject().put("thumbnail", "data:image/jpeg;base64,$encoded"))
+        } catch (e: Exception) {
+            call.resolve(JSObject().put("thumbnail", ""))
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
         }
+    }
+
+    /** Copies a MediaStore URI into app cache for WebView playback. Large files use a larger buffer and a temporary file so incomplete copies are not played. Cache names are URI-specific to avoid filename collisions. */
+    /** Launch native Media3 playback directly from the original content:// URI. No video copy/cache is created. */
+    @PluginMethod
+    fun launchVideo(call: PluginCall) {
+        val rawUri = call.getString("uri")
+        if (rawUri.isNullOrBlank()) { call.reject("Missing video URI"); return }
         try {
             val uri = Uri.parse(rawUri)
-            val name = call.getString("name", "video.mp4") ?: "video.mp4"
-            val safeName = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_")
-            val cacheDir = File(context.cacheDir, "meraj_media_playback")
-            if (!cacheDir.exists()) cacheDir.mkdirs()
-            val target = File(cacheDir, safeName)
-            val expectedSize = call.getLong("size") ?: 0L
-            if (!target.exists() || (expectedSize > 0 && target.length() != expectedSize)) {
-                context.contentResolver.openInputStream(uri).use { input ->
-                    if (input == null) throw IllegalStateException("Cannot open selected video")
-                    FileOutputStream(target).use { output -> input.copyTo(output) }
-                }
+            val intent = android.content.Intent(context, NativeVideoPlayerActivity::class.java).apply {
+                putExtra(NativeVideoPlayerActivity.EXTRA_URI, uri.toString())
+                putExtra(NativeVideoPlayerActivity.EXTRA_TITLE, call.getString("name", "Video") ?: "Video")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                clipData = android.content.ClipData.newUri(context.contentResolver, "video", uri)
             }
-            call.resolve(JSObject().put("path", target.absolutePath).put("size", target.length()))
+            activity.runOnUiThread { activity.startActivity(intent) }
+            call.resolve(JSObject().put("opened", true).put("directUri", true))
         } catch (e: Exception) {
-            call.reject("Could not prepare video for playback: ${e.message}", e)
+            call.reject("Could not start native video playback: ${e.message}", e)
         }
     }
 
