@@ -18,3 +18,11 @@
 ## Latest UX updates
 - Added a compact close/collapse chevron on the video frame; it pauses the video and hides the stage so the list can use the available screen. Selecting a video restores the stage.
 - Audio and video Share buttons now share the selected media file, not promotional text. Android uses MediaStore content URIs with ACTION_SEND, a chooser, and temporary read permission. Browser preview supports Web Share Files only where the browser permits it.
+
+
+## Browser-preview controls merge (2026-10-21)
+- Matched the video overlay layout to the approved standalone controls preview while preserving the existing Capacitor/native media bridge and library UI.
+- Added a horizontal thumbnail queue sourced from the existing video list/native thumbnail plugin.
+- Lock now hides the overlay and blocks controls; tapping the video unlocks.
+- The share control reuses the existing selected-video native share handler.
+- This is a source ZIP update. A Gradle/GitHub Actions APK build and physical-device validation have not been run here.

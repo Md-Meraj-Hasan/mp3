@@ -85,6 +85,11 @@ jobs:
           java-version: "21"
           cache: gradle
 
+      - name: Set up Gradle fallback for missing wrapper
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
       - name: Install web dependencies
         run: npm install --no-audit --no-fund
 
@@ -94,8 +99,63 @@ jobs:
       - name: Verify built HTML and local assets
         run: node scripts/verify-web-assets.cjs dist
 
-      - name: Generate Android project
-        run: npx cap add android
+      - name: Regenerate a clean Capacitor Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The repository's committed android/ folder is an old Jupyter/Chaquopy
+          # project (package com.meraj.jupyternotebook), not a Capacitor project.
+          # Reusing it leaves out the :capacitor-android project dependency, so
+          # all com.getcapacitor.* Kotlin imports fail to resolve. Generate the
+          # Android wrapper from the current package.json and capacitor.config.json.
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+
+          # Capacitor 7 places the module include in capacitor.settings.gradle,
+          # which is applied by settings.gradle. Check both files rather than
+          # requiring the string to appear directly in settings.gradle.
+          if ! grep -q "capacitor-android" android/settings.gradle android/capacitor.settings.gradle 2>/dev/null; then
+            echo "ERROR: Generated Android project is missing the Capacitor Android module reference."
+            echo "===== android/settings.gradle ====="
+            cat android/settings.gradle
+            echo "===== android/capacitor.settings.gradle ====="
+            if [ -f android/capacitor.settings.gradle ]; then cat android/capacitor.settings.gradle; else echo "File not found"; fi
+            exit 1
+          fi
+          if ! grep -q "capacitor-android" android/app/build.gradle; then
+            echo "ERROR: App Gradle file does not reference the Capacitor Android module."
+            cat android/app/build.gradle
+            exit 1
+          fi
+
+      - name: Align Java and Kotlin JVM targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_GRADLE="android/app/build.gradle"
+          test -f "$APP_GRADLE"
+          # Capacitor/AGP may configure Java for JVM 21 while Kotlin defaults to 17.
+          # Explicitly align both compilers before native media integration/build.
+          cat >> "$APP_GRADLE" <<'GRADLE'
+
+          // Keep Java and Kotlin bytecode targets aligned for the GitHub Actions JDK 21.
+          android {
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_21
+                  targetCompatibility JavaVersion.VERSION_21
+              }
+          }
+
+          tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+              kotlinOptions {
+                  jvmTarget = "21"
+              }
+          }
+          GRADLE
+          echo "===== JVM TARGET CONFIGURATION ====="
+          tail -n 22 "$APP_GRADLE"
+          grep -q 'jvmTarget = "21"' "$APP_GRADLE"
 
       - name: Integrate native media permissions and scanner
         run: node scripts/integrate-native-media.cjs
@@ -155,6 +215,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ ! -f gradlew ]; then
+            echo "Gradle wrapper is missing; generating it using the configured Gradle installation."
+            gradle wrapper --gradle-version 8.13 --distribution-type bin
+          fi
+          if [ ! -f gradlew ]; then
+            echo "ERROR: Gradle wrapper generation did not create android/gradlew."
+            ls -la
+            exit 1
+          fi
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
 

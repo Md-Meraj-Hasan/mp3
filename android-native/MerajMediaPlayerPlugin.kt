@@ -72,10 +72,39 @@ class MerajMediaPlayerPlugin : Plugin() {
     }
 
     private fun withController(call: PluginCall, action: (MediaController) -> Unit) {
+        // The MediaSession connection is asynchronous. Do not reject a valid tap
+        // merely because the user selected a song before the controller finished connecting.
         mainHandler.post {
-            val c = controller
-            if (c == null) call.reject("Background media session is not ready. Please try again.")
-            else try { action(c) } catch (e: Exception) { call.reject(e.message ?: "Media operation failed") }
+            fun runAction(c: MediaController) {
+                try {
+                    controller = c
+                    action(c)
+                } catch (e: Exception) {
+                    android.util.Log.e("MerajMediaPlayer", "Native media action failed", e)
+                    call.reject(e.message ?: "Media operation failed", e)
+                }
+            }
+
+            val ready = controller
+            if (ready != null) {
+                runAction(ready)
+                return@post
+            }
+
+            val future = controllerFuture
+            if (future == null) {
+                call.reject("Background media session was not initialized. Reopen the app and try again.")
+                return@post
+            }
+            future.addListener({
+                try {
+                    val c = controller ?: future.get().also { controller = it }
+                    runAction(c)
+                } catch (e: Exception) {
+                    android.util.Log.e("MerajMediaPlayer", "Could not connect to background media session", e)
+                    call.reject("Could not connect to the playback service: ${e.cause?.message ?: e.message ?: "unknown error"}", e)
+                }
+            }, java.util.concurrent.Executor { command -> mainHandler.post { command.run() } })
         }
     }
 
@@ -92,8 +121,12 @@ class MerajMediaPlayerPlugin : Plugin() {
                 if (uri.isBlank()) continue
                 val title = item.optString("title", "Local audio")
                 val artist = item.optString("artist", "Unknown artist")
-                mediaItems.add(MediaItem.Builder().setMediaId(item.optString("id", uri)).setUri(Uri.parse(uri))
-                    .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(artist).build()).build())
+                val parsedUri = Uri.parse(uri)
+                val builder = MediaItem.Builder().setMediaId(item.optString("id", uri)).setUri(parsedUri)
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(artist).build())
+                val mime = try { context.contentResolver.getType(parsedUri) } catch (_: Exception) { null }
+                if (!mime.isNullOrBlank()) builder.setMimeType(mime)
+                mediaItems.add(builder.build())
             }
             if (mediaItems.isEmpty()) { call.reject("No playable local media URIs were supplied."); return@withController }
             c.setMediaItems(mediaItems, startIndex.coerceIn(0, mediaItems.lastIndex), 0L)
@@ -119,8 +152,12 @@ class MerajMediaPlayerPlugin : Plugin() {
         val uri = call.getString("uri")
         if (uri.isNullOrBlank()) { call.reject("A local content URI is required."); return }
         withController(call) { c ->
-            c.setMediaItem(MediaItem.Builder().setUri(Uri.parse(uri)).build())
-            c.prepare(); c.play()
+            val parsedUri = Uri.parse(uri)
+            val builder = MediaItem.Builder().setUri(parsedUri)
+            val mime = try { context.contentResolver.getType(parsedUri) } catch (_: Exception) { null }
+            if (!mime.isNullOrBlank()) builder.setMimeType(mime)
+            c.setMediaItem(builder.build())
+            c.prepare(); c.playWhenReady = true; c.play()
             call.resolve(JSObject().put("accepted", true))
         }
     }

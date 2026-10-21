@@ -19,6 +19,18 @@ function walk(dir, predicate, out = []) {
 }
 
 if (!fs.existsSync(androidRoot)) throw new Error('Android project not found. Run npx cap add android first.');
+const settingsGradle = path.join(androidRoot, 'settings.gradle');
+const capacitorSettingsGradle = path.join(androidRoot, 'capacitor.settings.gradle');
+// Capacitor 7's generated settings.gradle applies capacitor.settings.gradle;
+// the :capacitor-android include may live in that applied file rather than the
+// top-level settings.gradle. Check the combined configuration.
+const settingsText = [
+  fs.existsSync(settingsGradle) ? fs.readFileSync(settingsGradle, 'utf8') : '',
+  fs.existsSync(capacitorSettingsGradle) ? fs.readFileSync(capacitorSettingsGradle, 'utf8') : ''
+].join('\\n');
+if (fs.existsSync(settingsGradle) && !settingsText.includes('capacitor-android')) {
+  throw new Error('The Android folder is not a correctly generated Capacitor project: :capacitor-android is missing from settings.gradle and capacitor.settings.gradle. Delete android/ and run npx cap add android.');
+}
 if (!fs.existsSync(manifest)) throw new Error(`AndroidManifest.xml not found at ${manifest}`);
 
 // Capacitor templates may generate MainActivity.kt or MainActivity.java and the
@@ -134,22 +146,52 @@ function ensureKotlinGradlePlugin() {
 
 ensureKotlinGradlePlugin();
 
+// Keep Kotlin bytecode target aligned with Java 21 used by the GitHub Actions
+// build. The workflow configures Java source/target compatibility to 21, so
+// Kotlin must also target 21 to avoid compileDebugKotlin target-validation failure.
+function ensureKotlinJvmTarget21() {
+  const appGradle = path.join(appRoot, 'build.gradle');
+  const appGradleKts = path.join(appRoot, 'build.gradle.kts');
+  const file = fs.existsSync(appGradle) ? appGradle : appGradleKts;
+  if (!fs.existsSync(file)) throw new Error('Cannot set Kotlin JVM target: app Gradle file is missing.');
+  let text = fs.readFileSync(file, 'utf8');
+  const marker = '// MERAJ_KOTLIN_JVM_TARGET_21';
+  if (text.includes(marker)) return;
+  if (file.endsWith('.kts')) {
+    text += `\n\n${marker}\ntasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {\n    kotlinOptions.jvmTarget = \"17\"\n}\n`;
+  } else {
+    text += `\n\n${marker}\ntasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {\n    kotlinOptions {\n        jvmTarget = '21'\n    }\n}\n`;
+  }
+  fs.writeFileSync(file, text);
+}
+ensureKotlinJvmTarget21();
+
 const appGradle = path.join(appRoot, 'build.gradle');
-let gradleText = fs.readFileSync(appGradle, 'utf8');
-if (!gradleText.includes('androidx.media3:media3-exoplayer')) {
-  if (!/dependencies\s*\{/.test(gradleText)) throw new Error('Could not find dependencies block in android/app/build.gradle');
-  gradleText = gradleText.replace(/dependencies\s*\{/, match => `${match}\n    implementation 'androidx.media3:media3-exoplayer:1.5.1'\n    implementation 'androidx.media3:media3-session:1.5.1'`);
-  fs.writeFileSync(appGradle, gradleText);
-} else if (!gradleText.includes('androidx.media3:media3-session')) {
-  gradleText = gradleText.replace(/dependencies\s*\{/, match => `${match}\n    implementation 'androidx.media3:media3-session:1.5.1'`);
-  fs.writeFileSync(appGradle, gradleText);
+const appGradleKts = path.join(appRoot, 'build.gradle.kts');
+const gradleFile = fs.existsSync(appGradle) ? appGradle : appGradleKts;
+if (!fs.existsSync(gradleFile)) throw new Error('Could not find android/app/build.gradle or build.gradle.kts');
+let gradleText = fs.readFileSync(gradleFile, 'utf8');
+const isKotlinDsl = gradleFile.endsWith('.kts');
+const depBlock = isKotlinDsl
+  ? `dependencies {\n    implementation("androidx.media3:media3-exoplayer:1.5.1")\n    implementation("androidx.media3:media3-session:1.5.1")\n    implementation("androidx.media3:media3-ui:1.5.1")\n}`
+  : `dependencies {\n    implementation 'androidx.media3:media3-exoplayer:1.5.1'\n    implementation 'androidx.media3:media3-session:1.5.1'\n    implementation 'androidx.media3:media3-ui:1.5.1'\n}`;
+const depLines = [
+  ['androidx.media3:media3-exoplayer', isKotlinDsl ? '    implementation("androidx.media3:media3-exoplayer:1.5.1")' : "    implementation 'androidx.media3:media3-exoplayer:1.5.1'"],
+  ['androidx.media3:media3-session', isKotlinDsl ? '    implementation("androidx.media3:media3-session:1.5.1")' : "    implementation 'androidx.media3:media3-session:1.5.1'"],
+  ['androidx.media3:media3-ui', isKotlinDsl ? '    implementation("androidx.media3:media3-ui:1.5.1")' : "    implementation 'androidx.media3:media3-ui:1.5.1'"]
+];
+const hasDependenciesBlock = /\bdependencies\s*\{/.test(gradleText);
+if (!hasDependenciesBlock) {
+  gradleText = gradleText.trimEnd() + '\n\n' + depBlock + '\n';
+} else {
+  for (const [coordinate, line] of depLines) {
+    if (!gradleText.includes(coordinate)) {
+      gradleText = gradleText.replace(/\bdependencies\s*\{/, match => `${match}\n${line}`);
+    }
+  }
 }
+fs.writeFileSync(gradleFile, gradleText);
 
-
-if (!gradleText.includes('androidx.media3:media3-ui')) {
-  gradleText = gradleText.replace(/dependencies\s*\{/, match => `${match}\n    implementation 'androidx.media3:media3-ui:1.5.1'`);
-  fs.writeFileSync(appGradle, gradleText);
-}
 
 // Register the MediaSessionService and foreground playback permissions.
 xml = fs.readFileSync(manifest, 'utf8');
