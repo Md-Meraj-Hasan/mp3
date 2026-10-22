@@ -233,17 +233,6 @@ class NativeVideoPlayerActivity : Activity() {
                 playerView.player = c
                 snapshotQueue(c)
                 val uri = videoUri ?: return@addListener
-                // Validate that this app can actually read the selected content URI.
-                // This gives a specific permission/provider error before Media3 prepares it.
-                try {
-                    contentResolver.openFileDescriptor(uri, "r")?.use { }
-                        ?: throw java.io.FileNotFoundException("Provider returned no file descriptor for $uri")
-                } catch (e: Exception) {
-                    android.util.Log.e("NiceMultimediaVideo", "Cannot read video URI: $uri", e)
-                    Toast.makeText(this, "Cannot read video file: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
-                    finish()
-                    return@addListener
-                }
                 // MediaStore document/content URIs often have no file extension. Give
                 // Media3 the provider MIME type explicitly so it does not mis-detect
                 // large local videos as an unknown/unsupported media source.

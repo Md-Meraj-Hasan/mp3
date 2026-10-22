@@ -43,13 +43,6 @@ class MerajMediaPlayerPlugin : Plugin() {
                                 put("reason", reason)
                             })
                         }
-                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                            android.util.Log.e("MerajMediaPlayer", "Audio playback failed: ${error.errorCodeName}; message=${error.message}", error)
-                            notifyListeners("playbackError", JSObject().apply {
-                                put("code", error.errorCodeName)
-                                put("message", error.message ?: "Unknown playback error")
-                            })
-                        }
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             val p = controller
                             notifyListeners("playbackState", JSObject().apply {
