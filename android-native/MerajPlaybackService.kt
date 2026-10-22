@@ -8,6 +8,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import android.media.audiofx.Equalizer
@@ -27,7 +28,11 @@ class MerajPlaybackService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
-        val exoPlayer = ExoPlayer.Builder(this).build().apply {
+        // Allow Media3 to try another compatible decoder if the preferred decoder
+        // fails to initialize. This is a decoder fallback, not a forced software mode.
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+        val exoPlayer = ExoPlayer.Builder(this, renderersFactory).build().apply {
             setAudioAttributes(audioAttributes, true)
             setHandleAudioBecomingNoisy(true)
         }
@@ -36,11 +41,30 @@ class MerajPlaybackService : MediaSessionService() {
         // platform Equalizer when playback has initialized the audio output.
         exoPlayer.addListener(object : Player.Listener {
             private fun attachCurrentAudioSession() {
-                val sessionId = exoPlayer.audioSessionId
-                if (sessionId > 0) MerajAudioEffects.attach(sessionId)
+                try {
+                    val sessionId = exoPlayer.audioSessionId
+                    if (sessionId > 0) MerajAudioEffects.attach(sessionId)
+                } catch (e: Exception) {
+                    // Audio effects are optional; they must never interrupt playback.
+                    android.util.Log.w("MerajMediaPlayer", "Skipping audio effects attachment", e)
+                }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                android.util.Log.e(
+                    "MerajMediaPlayer",
+                    "Playback error: ${error.errorCodeName}; message=${error.message}; cause=${error.cause?.message}",
+                    error
+                )
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                android.util.Log.d(
+                    "MerajMediaPlayer",
+                    "Playback state=$playbackState; playWhenReady=${exoPlayer.playWhenReady}; " +
+                        "isPlaying=${exoPlayer.isPlaying}; mediaId=${exoPlayer.currentMediaItem?.mediaId}; " +
+                        "audioSessionId=${exoPlayer.audioSessionId}"
+                )
                 if (playbackState == Player.STATE_READY) attachCurrentAudioSession()
             }
 
