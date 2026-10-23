@@ -1,64 +1,45 @@
 
 
-import { registerPlugin, Capacitor } from "@capacitor/core";
-import { ScreenOrientation } from "@capacitor/screen-orientation";
-import { App } from "@capacitor/app";
-
-const MediaPermission = registerPlugin("MediaPermission");
-const MediaLibraryScanner = registerPlugin("MediaLibraryScanner");
-const MerajMediaPlayer = registerPlugin("MerajMediaPlayer");
-
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-
-  // Call the native Capacitor plugins directly. This page is the actual local app
-  // entry, not an iframe, so a postMessage bridge to a missing parent would fail.
-  async function callParentNative(action, payload = {}) {
-    if (!Capacitor.isNativePlatform()) {
-      throw new Error("This feature needs the installed Android app.");
-    }
-    switch (action) {
-      case "permission":
-        return MediaPermission.requestIfNeeded();
-      case "scan":
-        return MediaLibraryScanner.scan(payload);
-      case "launchVideo":
-        return MediaLibraryScanner.launchVideo(payload);
-      case "getThumbnail":
-        return MediaLibraryScanner.getThumbnail(payload);
-      case "shareMedia":
-        return MediaLibraryScanner.shareMedia(payload);
-      case "orientationLock":
-        return ScreenOrientation.lock({ orientation: payload.orientation === "landscape" ? "landscape" : "portrait" });
-      case "orientationUnlock":
-        return ScreenOrientation.unlock();
-      case "exitApp":
-        return App.exitApp();
-      default:
-        throw new Error(`Unsupported native action: ${action}`);
-    }
+  // Native Capacitor plugins live in the parent audio/video shell. This isolated page
+  // uses a request/reply bridge rather than registering a second Capacitor runtime.
+  let nativeRequestCounter = 0;
+  const nativePending = new Map();
+  function callParentNative(action, payload = {}) {
+    return new Promise((resolve, reject) => {
+      const requestId = `video-${Date.now()}-${++nativeRequestCounter}`;
+      const timeout = setTimeout(() => { nativePending.delete(requestId); reject(new Error(`Native ${action} request timed out`)); }, 15000);
+      nativePending.set(requestId, { resolve, reject, timeout });
+      window.parent.postMessage({ bridge: 'meraj-video-native', requestId, action, payload }, '*');
+    });
   }
-
-  window.addEventListener("message", event => {
+  window.addEventListener('message', async event => {
     const message = event.data;
-    if (message?.type === "meraj-video-native-back") window.handleMerajAndroidBack?.();
-    if (message?.type === "meraj-video-parent-hide") {
+    if (!message) return;
+    if (message.bridge === 'meraj-video-native-result' && nativePending.has(message.requestId)) {
+      const pending = nativePending.get(message.requestId); nativePending.delete(message.requestId); clearTimeout(pending.timeout);
+      if (message.ok) pending.resolve(message.result); else pending.reject(new Error(message.error || 'Native operation failed'));
+    } else if (message.type === 'meraj-video-native-back') {
+      window.handleMerajAndroidBack?.();
+    } else if (message.type === 'meraj-video-parent-hide') {
       try { video.pause(); audio.pause(); } catch (_) {}
-      callParentNative("orientationLock", { orientation: "portrait" }).catch(() => {});
+      // Leaving the Video page must restore portrait at the native Android level;
+      // the Web Screen Orientation API alone does not reliably reset Capacitor WebView.
+      try { await callParentNative('orientationLock', { orientation: 'portrait' }); } catch (_) {}
       try { screen.orientation?.unlock?.(); } catch (_) {}
       state.videoOrientationLocked = false;
       if (state.controlsTimer) { clearTimeout(state.controlsTimer); state.controlsTimer = null; }
-      $("video-overlay-controls")?.classList.add("hidden");
+      $('video-overlay-controls')?.classList.add('hidden');
     }
   });
-
-  const VideoPermissionBridge = { requestIfNeeded: () => callParentNative("permission") };
+  const VideoPermissionBridge = { requestIfNeeded: () => callParentNative('permission') };
   const VideoScannerBridge = {
-    scan: payload => callParentNative("scan", payload),
-    launchVideo: payload => callParentNative("launchVideo", payload),
-    getThumbnail: payload => callParentNative("getThumbnail", payload),
-    shareMedia: payload => callParentNative("shareMedia", payload)
+    scan: payload => callParentNative('scan', payload),
+    launchVideo: payload => callParentNative('launchVideo', payload),
+    getThumbnail: payload => callParentNative('getThumbnail', payload),
+    shareMedia: payload => callParentNative('shareMedia', payload)
   };
 
   const welcome = $("welcome-screen"), playerScreen = $("player-screen");
@@ -124,19 +105,50 @@ const MerajMediaPlayer = registerPlugin("MerajMediaPlayer");
   };
   const formatBytes = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   const activeMedia = () => state.mode === "audio" ? audio : video;
+  const nativeAudioPlugin = () => window.parent?.Capacitor?.Plugins?.MerajMediaPlayer || window.Capacitor?.Plugins?.MerajMediaPlayer;
+  let nativeAudioActive = false;
+  let nativeAudioPoll = null;
+  function startNativeAudioStatePolling() {
+    if (nativeAudioPoll) clearInterval(nativeAudioPoll);
+    const plugin = nativeAudioPlugin();
+    if (!plugin?.getState) return;
+    nativeAudioPoll = setInterval(async () => {
+      if (!nativeAudioActive || state.mode !== 'audio') return;
+      try {
+        const st = await plugin.getState();
+        const pos = Math.max(0, Number(st.position || 0) / 1000);
+        const dur = Math.max(0, Number(st.duration || 0) / 1000);
+        $('current-time').textContent = formatTime(pos);
+        $('duration').textContent = formatTime(dur);
+        $('seekbar').value = dur > 0 ? String(Math.round(pos / dur * 1000)) : '0';
+        $('play-pause').textContent = st.isPlaying ? 'Ⅱ' : '▶';
+        $('play-pause').setAttribute('aria-label', st.isPlaying ? 'Pause' : 'Play');
+      } catch (_) {}
+    }, 700);
+  }
+  function isAudioFile(file) {
+    const name = String(file?.name || file?.displayName || '').toLowerCase();
+    const mime = String(file?.mimeType || file?.type || '').toLowerCase();
+    return mime.startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|amr|aiff|wma|mid|midi|3gp|mp4)$/.test(name);
+  }
+  function isVideoFile(file) {
+    const name = String(file?.name || file?.displayName || '').toLowerCase();
+    const mime = String(file?.mimeType || file?.type || '').toLowerCase();
+    return mime.startsWith('video/') || /\.(mp4|mkv|webm|avi|mov|m4v|3gp|mpeg|mpg|ts|wmv|flv|ogv)$/.test(name);
+  }
   // Android MediaStore returns content:// URIs. Keep these native URIs intact;
   // convertFileSrc is intended for filesystem paths and can turn a MediaStore
   // URI into an invalid localhost URL, leaving only the filename visible.
   const mediaPlaybackUrl = (uri) => {
     if (typeof uri !== "string") return uri;
     if (uri.startsWith("content://")) return uri;
-    return Capacitor.convertFileSrc ? Capacitor.convertFileSrc(uri) : uri;
+    return window.parent?.Capacitor?.convertFileSrc ? window.parent.Capacitor.convertFileSrc(uri) : uri;
   };
   const isFavorite = file => state.favorites.has(fileKey(file));
   const revokeUrls = () => { state.objectUrls.forEach(entry => URL.revokeObjectURL(typeof entry === "string" ? entry : entry.url)); state.objectUrls = []; };
 
   function openMode(mode) {
-    if (mode === "video") { audio.pause(); audio.removeAttribute("src"); audio.load(); }
+    if (mode === "video") { nativeAudioActive = false; nativeAudioPlugin()?.pause?.().catch?.(() => {}); audio.pause(); audio.removeAttribute("src"); audio.load(); }
     state.mode = mode;
     welcome.classList.add("hidden"); playerScreen.classList.remove("hidden");
     $("player-title").textContent = mode === "audio" ? "Music Player" : "Video Player";
@@ -192,7 +204,8 @@ const MerajMediaPlayer = registerPlugin("MerajMediaPlayer");
       updateScanMessage("Scanning device media…");
       const result = await scanner.scan({ type: state.mode });
       const items = Array.isArray(result?.items) ? result.items : [];
-      const normalized = items.map(item => ({
+      const typedItems = state.mode === 'audio' ? items.filter(isAudioFile) : items.filter(isVideoFile);
+      const normalized = typedItems.map(item => ({
         ...item,
         nativeMedia: true,
         lastModified: 0,
@@ -310,6 +323,38 @@ const MerajMediaPlayer = registerPlugin("MerajMediaPlayer");
       state.index = index;
       // Keep object URLs keyed by file so importing folders and favorites won't break playback.
       const file = state.files[state.index];
+      if (file?.uri && String(file.uri).startsWith('content://')) {
+        const plugin = nativeAudioPlugin();
+        if (!plugin?.play) {
+          updateScanMessage('Native audio playback is missing. Rebuild APK with MerajMediaPlayerPlugin.');
+          return;
+        }
+        nativeAudioActive = true;
+        audio.pause(); audio.removeAttribute('src'); audio.load(); video.pause();
+        $('current-name').textContent = file.name || file.displayName || 'Audio';
+        $('current-type').textContent = `AUDIO FILE · ${formatBytes(file.size || 0)}`;
+        $('media-stage').classList.remove('hidden'); $('empty-library').classList.add('hidden');
+        $('artwork').classList.remove('hidden'); video.classList.add('hidden');
+        $('audio-controls').classList.remove('hidden'); $('video-status').classList.add('hidden');
+        $('favorite-current').textContent = isFavorite(file) ? '♥ Remove favorite' : '♡ Add to favorites';
+        $('favorite-current').classList.toggle('is-favorite', isFavorite(file));
+        $('play-pause').textContent = autoplay ? 'Ⅱ' : '▶';
+        renderPlaylist();
+        try {
+          if (autoplay) {
+            await plugin.play({ uri: file.uri });
+            if (plugin.setPlaybackSpeed) await plugin.setPlaybackSpeed({ speed: state.speed });
+            if (plugin.setRepeatOne) await plugin.setRepeatOne({ enabled: state.repeat === 'one' });
+          }
+          startNativeAudioStatePolling();
+        } catch (error) {
+          nativeAudioActive = false;
+          updateScanMessage(`Could not play audio: ${error?.message || 'native playback failed'}`);
+        }
+        return;
+      }
+      nativeAudioActive = false;
+      const fileUrlFallback = file;
       let mediaUrl;
       if (file?.uri) {
         mediaUrl = mediaPlaybackUrl(file.uri);
@@ -585,6 +630,8 @@ const MerajMediaPlayer = registerPlugin("MerajMediaPlayer");
 
   function renderPlaylist() {
     const list = $("playlist");
+    const heading = document.querySelector('.playlist-header h3');
+    if (heading) heading.childNodes[0].textContent = state.mode === 'audio' ? 'Audio ' : 'Videos ';
     let shown = state.mode === "audio" ? currentAudioList() : state.files;
     if (state.mode === "video") {
       const q = state.videoSearch.trim().toLocaleLowerCase();
@@ -739,7 +786,7 @@ const MerajMediaPlayer = registerPlugin("MerajMediaPlayer");
   $("video-search").addEventListener("input", e => { state.videoSearch = e.target.value || ""; renderPlaylist(); });
   $("video-tab-all").addEventListener("click", () => { state.videoLibraryView = "videos"; state.videoSelectedFolder = ""; updateVideoLibraryTabs(); renderPlaylist(); });
   $("video-tab-folders").addEventListener("click", () => { state.videoLibraryView = "folders"; updateVideoLibraryTabs(); renderPlaylist(); });
-  $("bottom-audio-return")?.addEventListener("click", () => { openMode("audio"); scanDeviceLibrary(); });
+  $("bottom-audio-return")?.addEventListener("click", () => { window.parent.postMessage({ type: "meraj-video-switch-audio" }, "*"); });
   $("bottom-library").addEventListener("click", () => { document.body.classList.remove("video-playing"); state.videoLibraryView = "videos"; state.videoSelectedFolder = ""; updateVideoLibraryTabs(); renderPlaylist(); });
   $("bottom-folders").addEventListener("click", () => { document.body.classList.remove("video-playing"); state.videoLibraryView = "folders"; updateVideoLibraryTabs(); renderPlaylist(); });
   $("bottom-rescan").addEventListener("click", () => { document.body.classList.remove("video-playing"); scanDeviceLibrary(); });
@@ -805,15 +852,25 @@ const MerajMediaPlayer = registerPlugin("MerajMediaPlayer");
   });
   $("repeat-mode").addEventListener("click", () => {
     state.repeat = state.repeat === "off" ? "all" : state.repeat === "all" ? "one" : "off";
+    if (nativeAudioActive) nativeAudioPlugin()?.setRepeatOne?.({ enabled: state.repeat === "one" }).catch?.(() => {});
     updateModes();
   });
   $("playback-speed").addEventListener("change", e => {
     state.speed = Math.max(1, Math.min(2, Number(e.target.value) || 1));
     audio.playbackRate = state.speed;
     if ("defaultPlaybackRate" in audio) audio.defaultPlaybackRate = state.speed;
+    if (nativeAudioActive) nativeAudioPlugin()?.setPlaybackSpeed?.({ speed: state.speed }).catch?.(() => {});
   });
-  $("play-pause").addEventListener("click", () => {
+  $("play-pause").addEventListener("click", async () => {
     if (!state.files.length) return;
+    if (nativeAudioActive) {
+      const plugin = nativeAudioPlugin();
+      try {
+        const st = await plugin?.getState?.();
+        if (st?.isPlaying) await plugin.pause(); else await plugin.resume();
+      } catch (error) { updateScanMessage(`Audio control failed: ${error?.message || 'try again'}`); }
+      return;
+    }
     if (audio.paused) audio.play().catch(() => {}); else audio.pause();
   });
   $("previous-track").addEventListener("click", previousTrack);
@@ -989,7 +1046,15 @@ const MerajMediaPlayer = registerPlugin("MerajMediaPlayer");
     positionVideoControls();
   });
 
-  $("seekbar").addEventListener("input", () => {
+  $("seekbar").addEventListener("input", async () => {
+    if (nativeAudioActive) {
+      try {
+        const st = await nativeAudioPlugin()?.getState?.();
+        const duration = Math.max(0, Number(st?.duration || 0));
+        if (duration > 0) await nativeAudioPlugin()?.seekTo?.({ positionMs: Math.round(Number($("seekbar").value) / 1000 * duration) });
+      } catch (_) {}
+      return;
+    }
     if (Number.isFinite(audio.duration) && audio.duration > 0) audio.currentTime = (Number($("seekbar").value) / 1000) * audio.duration;
   });
   audio.addEventListener("timeupdate", () => {
