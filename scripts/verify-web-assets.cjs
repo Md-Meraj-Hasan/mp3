@@ -51,6 +51,19 @@ for (const root of roots) {
       const pathname = ref.split(/[?#]/, 1)[0];
 
       if (!pathname) continue;
+      // A fragment reference may point to a named element inside a directory.
+         const candidatePath = path.resolve(
+        absoluteRoot,
+        pathname.startsWith('/') ? pathname.slice(1) : pathname
+      );
+
+if (
+  ref.includes('#') &&
+  fs.existsSync(candidatePath) &&
+  fs.statSync(candidatePath).isDirectory()
+) {
+  continue;
+}
 
       let clean;
 
