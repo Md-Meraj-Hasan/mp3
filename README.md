@@ -1,17 +1,26 @@
-# Meraj Media — Offline Audio + Video Player
+# Native Android playback integration (Media3 / ExoPlayer)
 
-This project keeps the original offline audio library/player and replaces the former **MP3 Tools** navigation section with the full **Video Player** UI. The video player runs in a separate local HTML page inside an iframe to isolate its CSS and JavaScript from the existing audio player. A parent bridge forwards native media scan, thumbnail/cache, orientation and back-button calls to Capacitor plugins.
+This folder contains the native Android media permission, scanner and audio playback plugins. The build workflow copies and registers these plugins in the generated Capacitor Android project.
 
-- Audio: local music scan, library, albums, artists, folders, favorites, queue/player, playback controls and themes.
-- Video: local video library, search/folders, thumbnails, playback, seekbar, previous/next, 15-second seek, volume, fit/fullscreen, landscape rotate, lock controls and 0.5×–2× speed popup.
-- Offline-first; no streaming or ad features. Build workflow strips the INTERNET permission.
+- Media3/ExoPlayer is used for automatic container/codec detection; users do not manually choose a format.
+- The app passes a selected file URI to ExoPlayer and lets it detect the supported format.
+- Actual format support depends on device decoders and included Media3 modules. No single player can guarantee every codec/container.
+- The build workflow registers the native playback bridge and adds the Media3 ExoPlayer dependency. Device playback still needs to be tested on a physical Android phone.
+- The current HTML player remains the fallback for browser-supported formats.
 
-## Browser preview
-Run `npm install` then `npm run start`. Browser security requires selecting local audio folders/files for audio. Native video library scanning, orientation lock and Android MediaStore cache playback require the Android APK.
-
-## Android build
-GitHub Actions builds the debug APK. The native integration script registers media plugins and Media3 dependencies; physical-device testing is still required for Android permissions, codec support and orientation behavior.
+The GitHub Actions workflow performs plugin copy/registration and adds the Media3 dependency. Verify playback on a physical Android phone before release.
 
 
-### Gradle wrapper recovery (Review 6)
-The GitHub Actions workflow now provisions Gradle 8.11.1 and generates `android/gradlew` only if the Capacitor-generated Android project does not contain it. It then verifies the wrapper exists before running `assembleDebug`. This avoids the previous immediate `chmod: cannot access 'gradlew'` failure while retaining the existing Android project.
+## Background playback and notification
+
+`MerajPlaybackService.kt` owns the ExoPlayer instance through Media3 `MediaSessionService`. Android can show its media notification and Play/Pause/Next controls while the app is backgrounded. The native plugin sends the local audio queue to the session so track transitions can advance automatically. The GitHub Actions build must be run and tested on a physical Android device; this source package has not been device-tested.
+
+
+## Direct video playback (Media3 ExoPlayer)
+
+Android MediaStore videos are opened in `NativeVideoPlayerActivity` using Media3 ExoPlayer and the original `content://` URI. The app does not copy video bytes into cache or app-private storage. Playback reads from the Android content provider; memory use is limited to player buffers and normal app/UI data. Android's decoder/codec support still determines which formats can play. The activity is added to the manifest and `media3-ui` is added by `scripts/integrate-native-media.cjs`.
+
+
+## Native video engine in this source set
+
+The supplied `NativeVideoPlayerActivity.kt` and `integration.gradle.txt` use AndroidX Media3/ExoPlayer, not LibVLC. This connected package preserves the uploaded native implementation. If the GitHub branch is required to use LibVLC, the native activity, dependencies, and plugin launch path must be migrated separately before building.
