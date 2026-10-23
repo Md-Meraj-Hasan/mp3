@@ -67,11 +67,10 @@ class MediaLibraryScannerPlugin : Plugin() {
             MediaStore.Audio.Media.ALBUM
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) projection.add(MediaStore.MediaColumns.RELATIVE_PATH)
-        // Do not ask MediaProvider to sort the entire device library. On devices with
-        // thousands of files this ORDER BY can make the first scan take many minutes.
-        // Preserve provider order here; the UI can sort the returned lightweight list.
+        val sort = if (type == "video") "${MediaStore.Video.Media.DISPLAY_NAME} COLLATE NOCASE ASC"
+                   else "${MediaStore.Audio.Media.DISPLAY_NAME} COLLATE NOCASE ASC"
         try {
-            resolver.query(collection, projection.toTypedArray(), null, null, null)?.use { cursor ->
+            resolver.query(collection, projection.toTypedArray(), null, null, sort)?.use { cursor ->
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
